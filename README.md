@@ -10,21 +10,15 @@ cd tbhgvs
 python setup.py install
 ```
 
-The ```genome2hgvs``` function calls takes a list of dictionaries in the form of:
+The next thing to do is to download the fasta and gff files (this only needs to be done once!):
 ```
-[{"pos":7585,"ref":"G","alt":"C"}]
+tbhgvs-download-files.py
 ```
-and returns a dictionary with the form of:
 
- ```
- {'nucleotide_change': '7585G>C', 'type': 'missense', 'gene_name': 'gyrA', 'gene_id': 'Rv0006', 'hgvs': 'p.Ser95Thr'}
- ```
- If multiple mutations need to be annotated together (e.g. for mutations in the same codon), multiple dictionaries can be supplied in the list.
+Next we can create the reference database class and use it to convert.
+``` python
+ref_db = tbhgvs.reference_db()
+ref_db.hgvs2genome("p.Ser450Leu","Rv0667")
 
+ref_db.genome2hgvs([{'pos': '761155', 'ref': 'C', 'alt': 'T'}, {'pos': '761156', 'ref': 'G', 'alt': 'A'}])
 ```
-genome2hgvs([
-    {'pos': '7585', 'ref': 'G', 'alt': 'C'},
-    {'pos': '7586', 'ref': 'C', 'alt': 'G'}
-])
-```
-Have a look at `example_script.py` to see how to define a command-line script to perform the conversion.
