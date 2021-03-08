@@ -24,5 +24,3 @@ ref_db.hgvs2genome("p.Ser450Leu","Rv0667")
 
 ref_db.genome2hgvs([{'pos': '761155', 'ref': 'C', 'alt': 'T'}, {'pos': '761156', 'ref': 'G', 'alt': 'A'}])
 ```
-
-## Scripts
