@@ -1,6 +1,14 @@
 # tbhgvs
 
-tbhgvs.py contains functions for converting mutations to from genome coordinates to hgvs format
+tbhgvs contains functions for converting mutations to from genome coordinates to hgvs format.
+
+## Install
+You can install the package using the following commands:
+```
+git clone https://github.com/jodyphelan/tbhgvs.git
+cd tbhgvs
+python setup.py install
+```
 
 The ```genome2hgvs``` function calls takes a list of dictionaries in the form of:
 ```

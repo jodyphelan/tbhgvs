@@ -8,4 +8,5 @@ setuptools.setup(
     packages=["tbhgvs"],
     license="MIT",
     long_description="Utilities to convert between hgvs format and VCF genome coordinates",
+    scripts= ["scripts/%s" % x for x in os.listdir("scripts")],
 )
