@@ -10,14 +10,16 @@ cd tbhgvs
 python setup.py install
 ```
 
-The next thing to do is to download the fasta and gff files (this only needs to be done once!):
+## Usage
+
+The fisrt thing to do is to download the fasta and gff files (this only needs to be done once!):
 ```
 tbhgvs-download-files.py
 ```
 
 You can make your own script or you can use you can use the `tbhgvs-covert.py` script as a commands-line tool.
+If you would like to make your own script you can use this example as a template.
 
-If you would like to make your own script you can do the following
 ``` python
 ref_db = tbhgvs.reference_db()
 ref_db.hgvs2genome("p.Ser450Leu","Rv0667")
