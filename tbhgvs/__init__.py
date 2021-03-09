@@ -41,7 +41,7 @@ class reference_db:
     def genome2hgvs(self,variant):
         tmp_vcf = "%s.vcf" % uuid4()
         write_vcf(variant,tmp_vcf)
-        hgvs =  vcf2hgvs(tmp_vcf,self.fasta,self.gff)
+        hgvs =  vcf2hgvs(tmp_vcf,self.fasta,self.gff,self.genes,self.gene_dict)
         os.remove(tmp_vcf)
         return hgvs
     def hgvs2genome(self,variant,gene_name):
@@ -52,8 +52,8 @@ def download_files(directory=None):
     import urllib.request
     if not directory:
         directory = "%s/.tbhgvs/" % os.path.expanduser("~")
-        if not os.path.isdir(directory):
-            os.mkdir(directory)
+    if not os.path.isdir(directory):
+        os.mkdir(directory)
 
     urllib.request.urlretrieve('https://raw.githubusercontent.com/jodyphelan/tbdb/master/genome.fasta','%s/genome.fasta' % directory )
     urllib.request.urlretrieve('https://raw.githubusercontent.com/jodyphelan/tbdb/master/genome.gff','%s/genome.gff' % directory )
@@ -123,7 +123,8 @@ def write_vcf(variants,filename):
 
 def find_closest_genes(position,genes):
     left_gene = genes[bisect.bisect_left([g.feature_end for g in genes],position)-1]
-    right_gene = genes[bisect.bisect_right([g.feature_start for g in genes],position)]
+    i = bisect.bisect_right([g.feature_start for g in genes],position)
+    right_gene = genes[i] if len(genes)>i else None
     return (left_gene,right_gene)
 
 def codon_pos2genome_pos(gene,codon):
@@ -162,9 +163,7 @@ def revcom(s):
     return complement(s[::-1])
 
 
-def vcf2hgvs(infile,ref,gff,promoter_offset=50):
-    genes = load_gff(gff)
-    gene_dict = {g.name:g for g in genes}
+def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
     variants = []
     cmd = sp.Popen("bcftools csq -f %s -g %s %s | bcftools query -f '%%POS\t%%REF\t%%ALT\t%%BCSQ\n'" % (ref,gff,infile),shell=True,stdout=sp.PIPE,stderr=sp.PIPE)
     stderr = cmd.stderr.read().decode()
@@ -175,107 +174,122 @@ def vcf2hgvs(infile,ref,gff,promoter_offset=50):
         pos = int(row[0])
         ref = row[1]
         alt = row[2]
-        csq = row[3].split("|")
-        if csq[0][0]=="@":
-            pass
-        elif csq[0]=="missense" or csq[0]=="stop_gained":
-            # ['missense', 'gyrB', 'Rv0005', 'protein_coding', '+', '301V>301W', '6140G>T+6141T>G']
-            r = re.search("(\d+)([A-Z])>\d+([A-Z\*])",csq[5])
-            variants.append({
-                "nucleotide_change":csq[6],
-                "type": csq[0],
-                "gene_name": csq[1],
-                "gene_id": csq[2],
-                "hgvs": "p.%s%s%s" % (a2aaa[r.group(2)],r.group(1),a2aaa[r.group(3)])
-            })
-        elif csq[0]==".":
-            left_gene,right_gene = find_closest_genes(pos,genes)
-            if left_gene.strand=="-" and (left_gene.feature_end+promoter_offset)>pos:
-                offset = left_gene.feature_end - pos
-                variants.append({
-                    "nucleotide_change":"%s%s>%s" % (pos,revcom(ref),revcom(alt)),
-                    "type": "promoter",
-                    "gene_name": left_gene.name,
-                    "gene_id": left_gene.id,
-                    "hgvs": "c.%s%s>%s" % (offset,ref,alt)
-                })
-            elif right_gene.strand=="+" and (right_gene.feature_start-promoter_offset)<pos:
-                offset = pos-right_gene.feature_start
-                variants.append({
-                    "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
-                    "type": "promoter",
-                    "gene_name": right_gene.name,
-                    "gene_id": right_gene.id,
-                    "hgvs": "c.%s%s>%s" % (offset,ref,alt)
-                })
-            else:
-                variants.append({
-                    "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
-                    "type": "intergenic",
-                    "gene_name": None,
-                    "gene_id": None,
-                    "hgvs": "g.%s%s>%s" % (pos,ref,alt)
-                })
-        elif csq[0]=="frameshift" or csq[0]=="inframe_deletion" or csq[0]=="inframe_insertion":
-            gene = gene_dict[csq[1]]
-            if len(ref)>1:
-                ### Deletion
-                del_size = len(ref) - len(alt)
-                if gene.strand=="+":
-                    del_start = genome2gene_pos(pos + 1,gene )
-                    del_end = genome2gene_pos(pos+del_size,gene )
-                else:
-                    del_start = genome2gene_pos(pos+ del_size,gene )
-                    del_end = genome2gene_pos(pos+ 1,gene )
+        csqs = [x.split("|") for x in row[3].split(",")]
+        for csq in csqs:
+            if csq[0][0]=="@":
+                pass
+            elif csq[0]=="missense" or csq[0]=="stop_gained" or csq[0]=="stop_lost":
+                # ['missense', 'gyrB', 'Rv0005', 'protein_coding', '+', '301V>301W', '6140G>T+6141T>G']
+                r = re.search("(\d+)([A-Z\*])>\d+([A-Z\*])",csq[5])
                 variants.append({
                     "nucleotide_change":csq[6],
                     "type": csq[0],
                     "gene_name": csq[1],
                     "gene_id": csq[2],
-                    "hgvs": "c.%s_%sdel" % (del_start,del_end)
+                    "hgvs": "p.%s%s%s" % (a2aaa[r.group(2)],r.group(1),a2aaa[r.group(3)])
                 })
-            else:
-                ### Insertion
-                if gene.strand=="+":
-                    ins_seq = alt[1:]
-                    ins_start = genome2gene_pos(pos,gene)
+            elif csq[0]==".":
+                left_gene,right_gene = find_closest_genes(pos,genes)
+                if left_gene and left_gene.strand=="-" and (left_gene.feature_end+promoter_offset)>pos:
+                    offset = left_gene.feature_end - pos
+                    variants.append({
+                        "nucleotide_change":"%s%s>%s" % (pos,revcom(ref),revcom(alt)),
+                        "type": "promoter",
+                        "gene_name": left_gene.name,
+                        "gene_id": left_gene.id,
+                        "hgvs": "c.%s%s>%s" % (offset,ref,alt)
+                    })
+                elif right_gene and right_gene.strand=="+" and (right_gene.feature_start-promoter_offset)<pos:
+                    offset = pos-right_gene.feature_start
+                    variants.append({
+                        "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
+                        "type": "promoter",
+                        "gene_name": right_gene.name,
+                        "gene_id": right_gene.id,
+                        "hgvs": "c.%s%s>%s" % (offset,ref,alt)
+                    })
                 else:
-                    ins_seq = revcom(alt[1:])
-                    ins_start = genome2gene_pos(pos+1,gene)
+                    variants.append({
+                        "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
+                        "type": "intergenic",
+                        "gene_name": None,
+                        "gene_id": None,
+                        "hgvs": "g.%s%s>%s" % (pos,ref,alt)
+                    })
+            elif csq[0]=="frameshift" or csq[0]=="inframe_deletion" or csq[0]=="inframe_insertion":
+                gene = gene_dict[csq[1]]
+                if len(ref)>1:
+                    ### Deletion
+                    del_size = len(ref) - len(alt)
+                    if gene.strand=="+":
+                        del_start = genome2gene_pos(pos + 1,gene )
+                        del_end = genome2gene_pos(pos+del_size,gene )
+                    else:
+                        del_start = genome2gene_pos(pos+ del_size,gene )
+                        del_end = genome2gene_pos(pos+ 1,gene )
+                    variants.append({
+                        "nucleotide_change":csq[6],
+                        "type": csq[0],
+                        "gene_name": csq[1],
+                        "gene_id": csq[2],
+                        "hgvs": "c.%s_%sdel" % (del_start,del_end)
+                    })
+                else:
+                    ### Insertion
+                    if gene.strand=="+":
+                        ins_seq = alt[1:]
+                        ins_start = genome2gene_pos(pos,gene)
+                    else:
+                        ins_seq = revcom(alt[1:])
+                        ins_start = genome2gene_pos(pos+1,gene)
 
+                    variants.append({
+                        "nucleotide_change":csq[6],
+                        "type": csq[0],
+                        "gene_name": csq[1],
+                        "gene_id": csq[2],
+                        "hgvs": "c.%s_%sins%s" % (ins_start,ins_start+1,ins_seq)
+                    })
+            elif csq[0]=="non_coding" and csq[3]=="rRNA":
+                gene = gene_dict[csq[1]]
+                gene_pos = genome2gene_pos(pos,gene)
                 variants.append({
-                    "nucleotide_change":csq[6],
+                    "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
                     "type": csq[0],
                     "gene_name": csq[1],
-                    "gene_id": csq[2],
-                    "hgvs": "c.%s_%sins%s" % (ins_start,ins_start+1,ins_seq)
+                    "gene_id": csq[1],
+                    "hgvs": "r.%s%s>%s" % (gene_pos,ref.lower(),alt.lower())
                 })
-        elif csq[0]=="non_coding" and csq[3]=="rRNA":
-            gene = gene_dict[csq[1]]
-            gene_pos = genome2gene_pos(pos,gene)
-            variants.append({
-                "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
-                "type": csq[0],
-                "gene_name": csq[1],
-                "gene_id": csq[1],
-                "hgvs": "r.%s%s>%s" % (gene_pos,ref.lower(),alt.lower())
-            })
-        elif csq[0]=="start_lost":
-            gene = gene_dict[csq[1]]
-            gene_pos = genome2gene_pos(pos,gene)
+            elif csq[0]=="start_lost":
+                gene = gene_dict[csq[1]]
+                gene_pos = genome2gene_pos(pos,gene)
 
-            variants.append({
-                "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
-                "type": csq[0],
-                "gene_name": csq[1],
-                "gene_id": csq[1],
-                "hgvs": "c.%s%s>%s" % (gene_pos,ref,alt)
-            })
-        else:
-            quit("Error: cannot parse %s\n" %l)
-    if len(variants)==0:
-        quick("Error: bcftools could not annotate\n")
-    return variants[0]
+                variants.append({
+                    "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
+                    "type": csq[0],
+                    "gene_name": csq[1],
+                    "gene_id": csq[1],
+                    "hgvs": "c.%s%s>%s" % (gene_pos,ref,alt)
+                })
+            elif csq[0]=="synonymous":
+                gene = gene_dict[csq[1]]
+                gene_pos = genome2gene_pos(pos,gene)
+                if gene.strand=="-":
+                    ref_nt = revcom(ref)
+                    alt_nt = revcom(alt)
+                else:
+                    ref_nt = ref
+                    alt_nt = alt
+                variants.append({
+                    "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
+                    "type": csq[0],
+                    "gene_name": csq[1],
+                    "gene_id": csq[1],
+                    "hgvs": "c.%s%s>%s" % (gene_pos,ref_nt,alt_nt)
+                })
+            else:
+                quit("Error: cannot parse %s\n" % csq)
+    return variants
 
 def genome2hgvs(variants):
     tmp_vcf = "%s.vcf" % uuid4()
