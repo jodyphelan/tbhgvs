@@ -68,9 +68,9 @@ def load_gff(gff):
         p1 = int(fields[3])
         p2 = int(fields[4])
         gene_length = p2-p1+1
-        re_obj = re.search("Name=([a-zA-Z0-9\.\-\_]+)",l)
+        re_obj = re.search(r"Name=([a-zA-Z0-9\.\-\_]+)",l)
         gene_name = re_obj.group(1) if re_obj else None
-        re_obj = re.search("ID=gene:([a-zA-Z0-9\.\-\_]+)",l)
+        re_obj = re.search(r"ID=gene:([a-zA-Z0-9\.\-\_]+)",l)
         gene_id = re_obj.group(1) if re_obj else None
         feature_start,feature_end = p1,p2
         start = p1 if strand=="+" else p2
@@ -180,7 +180,7 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                 pass
             elif csq[0]=="missense" or csq[0]=="stop_gained" or csq[0]=="stop_lost":
                 # ['missense', 'gyrB', 'Rv0005', 'protein_coding', '+', '301V>301W', '6140G>T+6141T>G']
-                r = re.search("(\d+)([A-Z\*])>\d+([A-Z\*])",csq[5])
+                r = re.search("(\\d+)([A-Z\\*])>\\d+([A-Z\\*])",csq[5])
                 variants.append({
                     "nucleotide_change":csq[6],
                     "type": csq[0],
@@ -197,7 +197,7 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                         "type": "promoter",
                         "gene_name": left_gene.name,
                         "gene_id": left_gene.id,
-                        "hgvs": "c.%s%s>%s" % (offset,ref,alt)
+                        "hgvs": "c.%s%s>%s" % (offset,revcom(ref),revcom(alt))
                     })
                 elif right_gene and right_gene.strand=="+" and (right_gene.feature_start-promoter_offset)<pos:
                     offset = pos-right_gene.feature_start
@@ -271,7 +271,7 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                     "gene_id": csq[1],
                     "hgvs": "c.%s%s>%s" % (gene_pos,ref,alt)
                 })
-            elif csq[0]=="synonymous":
+            elif csq[0]=="synonymous" or csq[0]=="stop_retained":
                 gene = gene_dict[csq[1]]
                 gene_pos = genome2gene_pos(pos,gene)
                 if gene.strand=="-":
@@ -291,14 +291,14 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                 quit("Error: cannot parse %s\n" % csq)
     return variants
 
-def genome2hgvs(variants):
-    tmp_vcf = "%s.vcf" % uuid4()
-    write_vcf(variants,tmp_vcf)
-    fasta = "%s/MTB-h37rv_asm19595v2-eg18.fa" % (module_path)
-    gff = "%s/MTB-h37rv_asm19595v2-eg18.gff" % (module_path)
-    hgvs =  vcf2hgvs(tmp_vcf,fasta,gff)
-    os.remove(tmp_vcf)
-    return hgvs
+# def genome2hgvs(variants):
+#     tmp_vcf = "%s.vcf" % uuid4()
+#     write_vcf(variants,tmp_vcf)
+#     fasta = "%s/MTB-h37rv_asm19595v2-eg18.fa" % (module_path)
+#     gff = "%s/MTB-h37rv_asm19595v2-eg18.gff" % (module_path)
+#     hgvs =  vcf2hgvs(tmp_vcf,fasta,gff)
+#     os.remove(tmp_vcf)
+#     return hgvs
 
 def fetch_seq(genome,start,end):
     if start>end:
@@ -326,8 +326,7 @@ def get_possible_codon_changes(codon,alt_aaa,genome_coords):
 def hgvs2genome(var,gene,refgenome):
     if var[0]=="p":
         #p.Thr40Ile
-        re_obj = re.match("p.([A-Za-z]+)([0-9]+)([A-Za-z\*]+)",var)
-        ref_aaa = re_obj.group(1)
+        re_obj = re.match(r"p.([A-Za-z]+)([0-9]+)([A-Za-z\*]+)",var)
         codon_pos = int(re_obj.group(2))
         alt_aaa = re_obj.group(3)
         genome_positions = codon_pos2genome_pos(gene,codon_pos)
@@ -356,14 +355,14 @@ def hgvs2genome(var,gene,refgenome):
         elif "del" in var:
             if "_" in var:
                 #c.785_787del
-                re_obj = re.match("c.(\-*[0-9]+)_(\-*[0-9]+)del",var)
+                re_obj = re.match(r"c.(\-*[0-9]+)_(\-*[0-9]+)del",var)
                 genome_pos_from = gene_pos2genome(int(re_obj.group(1)),gene)
                 genome_pos_to = gene_pos2genome(int(re_obj.group(2)),gene)
             else:
                 #c.884del
-                re_obj = re.match("c.(\-*[0-9]+)del",var)
+                re_obj = re.match(r"c.(\-*[0-9]+)del",var)
                 genome_pos_from = gene_pos2genome(int(re_obj.group(1)),gene)
-                genome_pos_to = gene_pos_from
+                genome_pos_to = genome_pos_from
 
             if gene.strand=="+":
                 vcf_genome_pos = genome_pos_from - 1
