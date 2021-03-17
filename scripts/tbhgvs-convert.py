@@ -34,7 +34,7 @@ parser_sub.add_argument('--gene',help='Mutation panel name (e.g. rpoB)',required
 parser_sub.add_argument('--mutation',help='Mutation (e.g. p.Ser450Leu)',required=True)
 parser_sub.set_defaults(func=hgvs)
 
-parser_sub = subparsers.add_parser('genome', help='Convert from hgvs to genome', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser_sub = subparsers.add_parser('genome', help='Convert from genome tp hgvs', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser_sub.add_argument('--pos',help='Positions',required=True)
 parser_sub.add_argument('--ref',help='Reference alleles',required=True)
 parser_sub.add_argument('--alt',help='Alternate alleles',required=True)

@@ -18,6 +18,15 @@ tbhgvs-download-files.py
 ```
 
 You can make your own script or you can use you can use the `tbhgvs-covert.py` script as a commands-line tool.
+
+```
+# Example genome -> hgvs format
+tbhgvs-convert.py  genome --pos 3841083 --ref A --alt C
+
+# Example hgvs -> genome format
+tbhgvs-convert.py  hgvs  --gene alr --mutation p.Leu113Arg
+```
+
 If you would like to make your own script you can use this example as a template.
 
 ``` python
