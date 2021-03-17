@@ -20,8 +20,9 @@ def genome(args):
     alts = args.alt.split(",")
     mutations = [{"pos":x[0],"ref":x[1],"alt":x[2]} for x in zip(positions,refs,alts)]
     mut = ref_db.genome2hgvs(mutations)
-    for key,val in mut.items():
-        print("%s: %s" % (key,val))
+    for m in mut:
+        for key,val in m.items():
+            print("%s: %s" % (key,val))
 
 
 # Set up the parser
