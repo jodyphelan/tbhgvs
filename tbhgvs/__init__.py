@@ -68,7 +68,7 @@ def load_gff(gff):
         p1 = int(fields[3])
         p2 = int(fields[4])
         gene_length = p2-p1+1
-        re_obj = re.search(r"Name=([a-zA-Z0-9\.\-\_]+)",l)
+        re_obj = re.search(r"Name=([a-zA-Z0-9\.\-\_\(\)]+)",l)
         gene_name = re_obj.group(1) if re_obj else None
         re_obj = re.search(r"ID=gene:([a-zA-Z0-9\.\-\_]+)",l)
         gene_id = re_obj.group(1) if re_obj else None
@@ -77,6 +77,8 @@ def load_gff(gff):
         end =  p2 if strand=="+" else p1
         tmp = gene_class(gene_name,gene_id,strand,start,end,feature_start,feature_end,gene_length)
         genes.append(tmp)
+        if "erm(37)" in l:
+            print(tmp)
     return genes
 
 
@@ -178,6 +180,40 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
         for csq in csqs:
             if csq[0][0]=="@":
                 pass
+            elif len(csq)==5 and len(ref)!=len(alt):
+                gene = gene_dict[csq[1]]
+                if len(ref)>1:
+                    ### Deletion
+                    del_size = len(ref) - len(alt)
+                    if gene.strand=="+":
+                        del_start = genome2gene_pos(pos + 1,gene )
+                        del_end = genome2gene_pos(pos+del_size,gene )
+                    else:
+                        del_start = genome2gene_pos(pos+ del_size,gene )
+                        del_end = genome2gene_pos(pos+ 1,gene )
+                    variants.append({
+                        "nucleotide_change":csq[6] if len(csq)==7 else "%s%s>%s" % (pos,ref,alt),
+                        "type": csq[0],
+                        "gene_name": csq[1],
+                        "gene_id": csq[2],
+                        "hgvs": "c.%s_%sdel" % (del_start,del_end)
+                    })
+                else:
+                    ### Insertion
+                    if gene.strand=="+":
+                        ins_seq = alt[1:]
+                        ins_start = genome2gene_pos(pos,gene)
+                    else:
+                        ins_seq = revcom(alt[1:])
+                        ins_start = genome2gene_pos(pos+1,gene)
+
+                    variants.append({
+                        "nucleotide_change":csq[6] if len(csq)==7 else "%s%s>%s" % (pos,ref,alt),
+                        "type": csq[0],
+                        "gene_name": csq[1],
+                        "gene_id": csq[2],
+                        "hgvs": "c.%s_%sins%s" % (ins_start,ins_start+1,ins_seq)
+                    })
             elif csq[0]=="missense" or csq[0]=="stop_gained" or csq[0]=="stop_lost":
                 # ['missense', 'gyrB', 'Rv0005', 'protein_coding', '+', '301V>301W', '6140G>T+6141T>G']
                 r = re.search("(\\d+)([A-Z\\*])>\\d+([A-Z\\*])",csq[5])
@@ -216,7 +252,7 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                         "gene_id": None,
                         "hgvs": "g.%s%s>%s" % (pos,ref,alt)
                     })
-            elif csq[0]=="frameshift" or csq[0]=="inframe_deletion" or csq[0]=="inframe_insertion":
+            elif "frameshift" in csq[0] or "inframe_deletion" in csq[0] or csq[0]=="inframe_insertion":
                 gene = gene_dict[csq[1]]
                 if len(ref)>1:
                     ### Deletion
@@ -228,7 +264,7 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                         del_start = genome2gene_pos(pos+ del_size,gene )
                         del_end = genome2gene_pos(pos+ 1,gene )
                     variants.append({
-                        "nucleotide_change":csq[6],
+                        "nucleotide_change":csq[6] if len(csq)==7 else "%s%s>%s" % (pos,ref,alt),
                         "type": csq[0],
                         "gene_name": csq[1],
                         "gene_id": csq[2],
@@ -271,7 +307,7 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                     "gene_id": csq[1],
                     "hgvs": "c.%s%s>%s" % (gene_pos,ref,alt)
                 })
-            elif csq[0]=="synonymous" or csq[0]=="stop_retained":
+            elif csq[0]=="synonymous" or csq[0]=="stop_retained" or csq[0]=="coding_sequence":
                 gene = gene_dict[csq[1]]
                 gene_pos = genome2gene_pos(pos,gene)
                 if gene.strand=="-":
@@ -286,6 +322,14 @@ def vcf2hgvs(infile,ref,gff,genes,gene_dict,promoter_offset=50):
                     "gene_name": csq[1],
                     "gene_id": csq[1],
                     "hgvs": "c.%s%s>%s" % (gene_pos,ref_nt,alt_nt)
+                })
+            elif csq[3]=="pseudogene":
+                variants.append({
+                    "nucleotide_change":"%s%s>%s" % (pos,ref,alt),
+                    "type": csq[0],
+                    "gene_name": csq[1],
+                    "gene_id": csq[1],
+                    "hgvs": "g.%s%s>%s" % (pos,ref,alt)
                 })
             else:
                 quit("Error: cannot parse %s\n" % csq)
